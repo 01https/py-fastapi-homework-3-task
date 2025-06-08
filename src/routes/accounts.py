@@ -65,7 +65,7 @@ async def create_user(user: UserRegistrationRequestSchema, db: AsyncSession = De
 
         await db.commit()
         await db.refresh(db_user)
-        return db_user
+        return {"id": db_user.id, "email": db_user.email}
 
     except HTTPException as e:
         await db.rollback()
@@ -293,11 +293,14 @@ async def update_refresh_token(
 ):
     try:
         decoded = jwt_manager.decode_refresh_token(payload.refresh_token)
-        user_id = decoded["user_id"]
+        print(decoded)
     except TokenExpiredError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token has expired.")
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid refresh token.")
+
+    user_id = decoded.get("user_id")
+    user_email = decoded.get("email")
 
     stmt = select(RefreshTokenModel).where(RefreshTokenModel.token == payload.refresh_token)
     result = await db.execute(stmt)
@@ -313,6 +316,9 @@ async def update_refresh_token(
     if not db_user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
 
-    access_token = jwt_manager.create_access_token({"user_id": user_id})
+    if not user_email:
+        access_token = jwt_manager.create_access_token({"user_id": user_id})
+    else:
+        access_token = jwt_manager.create_access_token({"sub": user_email, "user_id": user_id})
 
     return {"access_token": access_token}
